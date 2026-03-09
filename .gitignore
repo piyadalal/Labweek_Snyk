@@ -27,6 +27,12 @@ venv/
 .venv/
 env/
 ENV/
+venv*/
+venv_snyk/
+# Virtual environments patterns
+venv*/
+.venv*/
+env*/
 
 # Distribution / packaging
 build/

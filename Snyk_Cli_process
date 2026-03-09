@@ -1,0 +1,3 @@
+snyk auth
+snyk test --json > snyk_output.json
+snyk orgs:list --json
