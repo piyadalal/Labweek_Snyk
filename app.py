@@ -19,6 +19,14 @@ client = OpenAI(
 PROJECT_ROOT = "/Users/prda5207/PycharmProjects/Git_repos/Sky_E2E_Repo/sky-onbox-e2e-skyq-pa-automation"
 GITHUB_REPO_URL = "https://github.com/1703/sky-onbox-e2e-skyq-pa-automation"
 BRANCH = "main"
+
+PROGRAMMING_LANGUAGES = ["Python", "JavaScript", "Java", "PHP"]
+LESSONS_LINKS = {
+    "Python": "https://learn.snyk.io/catalog/?format=lesson&categories=python",
+    "JavaScript": "https://learn.snyk.io/catalog/?format=lesson&categories=javascript",
+    "Java": "https://learn.snyk.io/catalog/?format=lesson&categories=java",
+    "PHP": "https://learn.snyk.io/catalog/?format=lesson&categories=php"}
+
 # ------------------------
 # Utilities
 # ------------------------
@@ -201,7 +209,9 @@ if st.button("Generate Fix") and code_input.strip():
     with st.spinner("Generating secure fix..."):
 
         prompt = f"""
-You are a senior secure coding expert.
+    You are a senior secure coding expert focused on analyzing vulnerabilities and providing secure code fixes.
+    Use {PROGRAMMING_LANGUAGES} and {LESSONS_LINKS} to guide your analysis and recommendations.
+    
 
 Vulnerability Title: {vuln_title}
 Severity: {severity}
