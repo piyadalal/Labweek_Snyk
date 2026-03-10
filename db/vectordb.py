@@ -1,83 +1,112 @@
 import chromadb
 from chromadb.config import Settings
-from datetime import datetime
-from uuid import uuid4
+import hashlib
+from datetime import datetime, timezone
+import re
+import os
 
-# -----------------------------
-# 1. Initialize persistent DB
-# -----------------------------
-client = chromadb.Client(
-    Settings(
-        persist_directory="./chroma_db",  # folder where data is stored
-        is_persistent=True
-    )
-)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+persist_dir = os.path.join(BASE_DIR, "chroma_db")
 
-# Create or load collection
-collection = client.get_or_create_collection(
-    name="security_vulnerabilities"
-)
+class VulnerabilityDB:
 
-# -----------------------------
-# 2. Prepare Data
-# -----------------------------
-entry_id = str(uuid4())
+    def __init__(self, persist_dir = os.path.join(BASE_DIR, "chroma_db")):
+        self.client = chromadb.Client(
+            Settings(
+                persist_directory=persist_dir,
+                is_persistent=True
+            )
+        )
+        print("Using Chroma DB at:", persist_dir)
 
-vulnerability_type = "Cross-site Scripting (XSS)"
-vulnerable_code = """<input id='rowid' type='hidden' name='rowid' value='$rowid'>
-    $htmlStrExtra
-<hr>
-EOT;
-print $htmlStr;"""
-root_cause = "The code directly outputs user-controlled data (rowid and htmlStrExtra) into the HTML without proper sanitization or escaping, making it vulnerable to Cross-site Scripting (XSS) attacks. An attacker could inject malicious scripts that would execute in the context of the user's browser."
-secure_fix = "To mitigate the XSS vulnerability, user input should be properly sanitized and escaped before being output to the HTML. This can be achieved by using functions that encode special characters in HTML, such as htmlspecialchars() in PHP."
-fixed_code = """<input id='rowid' type='hidden' name='rowid' value='<?php echo htmlspecialchars($rowid, ENT_QUOTES, 'UTF-8'); ?>'>
-            <?php echo htmlspecialchars($htmlStrExtra, ENT_QUOTES, 'UTF-8'); ?>
-        <hr>"""
-business_impact = "If exploited, XSS vulnerabilities can lead to session hijacking, defacement of web pages, phishing attacks, and unauthorized actions on behalf of users, potentially resulting in loss of customer trust, financial loss, and legal repercussions."
-exploit_likelihood = "High"
-language = "PHP"
 
-# Document = everything that should be semantically searchable
-document_text = f"""
+        self.collection = self.client.get_or_create_collection(
+            name="vulnerability_knowledge"
+        )
+        print("Collection count:", self.collection.count())
+
+        # ---------------------------------------
+        # Normalize Code
+        # ---------------------------------------
+    @staticmethod
+    def normalize_code(code):
+        if not code:
+            return ""
+        code = code.strip()
+        code = code.replace("\r\n", "\n")
+        code = re.sub(r"\n\s*\n", "\n", code)
+        code = "\n".join(line.strip() for line in code.split("\n"))
+        return code
+
+    # ---------------------------------------
+    # Create deterministic ID
+    # ---------------------------------------
+    def generate_id(self, rule_id, title, code_snippet):
+        normalized_code = self.normalize_code(code_snippet)
+        unique_string = f"{rule_id}:{title}:{normalized_code}"
+        return hashlib.sha256(unique_string.encode()).hexdigest()
+    # ---------------------------------------
+    # Check if already exists
+    # ---------------------------------------
+    def get_existing(self, rule_id, title, code_snippet):
+
+        doc_id = self.generate_id(rule_id, title, code_snippet)
+
+        result = self.collection.get(ids=[doc_id])
+
+        if result["documents"]:
+            return result
+
+        return None
+
+    # ---------------------------------------
+    # Store new vulnerability analysis
+    # ---------------------------------------
+    def store(self, issue, analysis_json):
+
+        doc_id = self.generate_id(
+            issue["ruleID"],
+            issue["title"],
+            issue["code_snippet"]
+        )
+
+        document_text = f"""
+TITLE:
+{issue['title']}
+
 VULNERABILITY TYPE:
-{vulnerability_type}
+{issue['ruleID']}
 
 VULNERABLE CODE:
-{vulnerable_code}
+{issue['code_snippet']}
 
 ROOT CAUSE:
-{root_cause}
+{analysis_json['root_cause']}
 
 SECURE FIX EXPLANATION:
-{secure_fix}
+{analysis_json['secure_fix_explanation']}
 
 FIXED CODE:
-{fixed_code}
+{analysis_json['fixed_code']}
 
 BUSINESS IMPACT:
-{business_impact}
-
+{analysis_json['business_impact']}
 """
 
-# Metadata = structured/filterable data
-metadata = {
-    "timestamp": datetime.utcnow().isoformat(),
-    "filepath": "src/auth/login.py",
-    "github_link": "https://github.com/org/repo/login.py",
-    "exploit_likelihood": "High"
-}
+        metadata = {
+            "rule_id": issue["ruleID"],
+            "title": issue["title"],
+            "exploit_likelihood": analysis_json["exploit_likelihood"],
+            "fix_priority": analysis_json["fix_priority"],
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
 
-# -----------------------------
-# 3. Add to Chroma
-# -----------------------------
-collection.add(
-    ids=[entry_id],
-    documents=[document_text],
-    metadatas=[metadata]
-)
+        self.collection.add(
+            ids=[doc_id],
+            documents=[document_text],
+            metadatas=[metadata]
+        )
 
-# Persist to disk
-client.persist()
+        self.client.persist()
 
-print("Entry stored successfully.")
+        return doc_id

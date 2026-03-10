@@ -5,6 +5,8 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from rapidfuzz import fuzz
 import difflib
+import streamlit.components.v1 as components
+
 # ------------------------
 # Load Environment
 # ------------------------
@@ -260,13 +262,17 @@ Return JSON:
         st.subheader("Fixed Code")
         st.code(result_json["fixed_code"])
 
-        # Copy button
-        copy_button_html = f"""
-        <button onclick="navigator.clipboard.writeText(`{result_json['fixed_code']}`)">
-        Copy Patch
-        </button>
-        """
-        st.markdown(copy_button_html, unsafe_allow_html=True)
+        if st.button("📋 Copy Patch"):
+            components.html(
+                f"""
+                <script>
+                navigator.clipboard.writeText(`{result_json['fixed_code']}`);
+                </script>
+                """,
+                height=0,
+            )
+            st.success("Patch copied to clipboard!")
+
         original = st.session_state.code_input.splitlines(keepends=True)
         fixed = result_json["fixed_code"].splitlines(keepends=True)
 

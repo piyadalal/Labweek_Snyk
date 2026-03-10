@@ -1,0 +1,184 @@
+Love this question 👌 — this is exactly how you move from “working prototype” to “proper product plan”.
+
+Below are **many short, atomic Trello-ready subtasks** grouped by theme. Each one is small, actionable, and clear.
+
+You can literally copy-paste these as Trello cards.
+
+---
+
+# 🟢 EPIC 1: Code Matching & Snyk Integration
+
+### 🔹 Subtasks
+
+1. Refactor Snyk SARIF parsing into separate module (`snyk_loader.py`)
+2. Add validation if `snyk-code-output.json` is missing
+3. Add error handling for malformed SARIF
+4. Improve fuzzy match threshold logic
+5. Replace fuzzy matching with top-3 match selection
+6. Add similarity threshold slider in UI
+7. Add match confidence badge (color-coded)
+8. Add fallback when no snippet found in repo
+9. Add support for multi-line snippet matching
+10. Log matching score for debugging
+11. Add option to toggle “strict match mode”
+12. Add test case for incorrect snippet matching
+13. Optimize matching performance for large Snyk files
+14. Add embedding-based semantic matching (future upgrade)
+15. Cache parsed Snyk results using `st.cache_data`
+
+---
+
+# 🟢 EPIC 2: Vulnerability Context & UI Improvements
+
+### 🔹 Subtasks
+
+1. Add CWE display from Snyk rule metadata
+2. Add rule ID display (e.g., `php/XSS`)
+3. Show severity as color badge (red/orange/yellow/green)
+4. Add risk priority visualization (progress bar)
+5. Show line numbers alongside highlighted snippet
+6. Add collapsible “Full File View”
+7. Add “Copy File Path” button
+8. Improve highlighted line styling
+9. Improve match confidence UI formatting
+10. Add tooltip explaining SARIF severity levels
+11. Add dark/light theme toggle
+12. Improve spacing between UI sections
+13. Add loading spinner for matching
+14. Add “Clear Form” button
+
+---
+
+# 🟢 EPIC 3: LLM Fix Generation Improvements
+
+### 🔹 Subtasks
+
+1. Add error handling for failed LLM response
+2. Add retry logic for Azure OpenAI calls
+3. Add timeout handling
+4. Log token usage per request
+5. Add structured logging for prompts
+6. Add toggle for temperature adjustment
+7. Add model selection dropdown (gpt-4o-mini vs others)
+8. Add “Explain only” mode (no fix generation)
+9. Add “Security deep analysis” mode
+10. Improve prompt clarity for structured JSON
+11. Add schema validation for LLM JSON output
+12. Add fallback if LLM returns invalid JSON
+13. Cache previous fix results
+14. Add diff-only output mode
+15. Add test prompt logging for debugging
+
+---
+
+# 🟢 EPIC 4: Developer Workflow Features
+
+### 🔹 Subtasks
+
+1. Improve Copy Patch button styling
+2. Add confirmation toast after copy
+3. Improve `.diff` generation formatting
+4. Add inline diff viewer (side-by-side)
+5. Add download original snippet button
+6. Add “Download Fixed File” option
+7. Add GitHub deep link formatting
+8. Add branch selector for GitHub link
+9. Add commit hash linking
+10. Add “Create Pull Request” placeholder button
+11. Add Jira integration form
+12. Add Jira project selector
+13. Add Jira priority mapping from severity
+14. Add Jira ticket preview before creation
+15. Add Slack notification integration (future)
+
+---
+
+# 🟢 EPIC 5: Security & Secrets Hardening
+
+### 🔹 Subtasks
+
+1. Remove all hardcoded secrets
+2. Validate `.env` existence on startup
+3. Add secret presence check before app load
+4. Add warning if Azure key missing
+5. Prevent secret logging in console
+6. Add masked secret debug mode
+7. Add environment validation panel
+8. Add secure config file support
+9. Add safe error message handling
+10. Add dependency vulnerability scanning
+
+---
+
+# 🟢 EPIC 6: Performance & Scalability
+
+### 🔹 Subtasks
+
+1. Cache Snyk issue loading
+2. Precompute snippet index
+3. Optimize fuzzy matching performance
+4. Benchmark matching time
+5. Add large repo performance warning
+6. Add background thread for LLM calls
+7. Add progress bar for long fix generation
+8. Add async LLM call support
+9. Add batch snippet processing mode
+10. Add memory usage monitoring
+
+---
+
+# 🟢 EPIC 7: Advanced AI Intelligence
+
+### 🔹 Subtasks
+
+1. Implement embedding-based snippet matching
+2. Add cosine similarity scoring
+3. Add similarity threshold tuning
+4. Add clustering of similar vulnerabilities
+5. Add vulnerability grouping by CWE
+6. Add auto-priority scoring formula
+7. Add exploit likelihood scoring
+8. Add business impact scoring
+9. Add security posture dashboard
+10. Add executive summary generation
+11. Add AI-generated remediation roadmap
+12. Add auto-generated test case suggestion
+13. Add regression test suggestion generation
+14. Add risk heatmap visualization
+15. Add confidence score normalization
+
+---
+
+# 🟢 EPIC 8: Productization
+
+### 🔹 Subtasks
+
+1. Add Dockerfile for deployment
+2. Add Azure App Service deployment config
+3. Add environment variable validation
+4. Add requirements.txt cleanup
+5. Add logging framework
+6. Add version display in UI
+7. Add feedback form for users
+8. Add analytics tracking (optional)
+9. Add user role-based access (future)
+10. Add rate limiting for LLM calls
+
+---
+
+# 🟢 EPIC 9: Code Quality Improvements
+
+### 🔹 Subtasks
+
+1. Move utility functions to separate module
+2. Separate UI logic from business logic
+3. Add type hints to functions
+4. Add docstrings to utility functions
+5. Add unit tests for matching logic
+6. Add unit tests for snippet extraction
+7. Add unit tests for severity mapping
+8. Add test dataset for Snyk parsing
+9. Add linting (flake8 / black)
+10. Add structured error logging
+
+--- End of Task List -

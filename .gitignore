@@ -45,6 +45,8 @@ dist/
 .coverage
 htmlcov/
 
+tree-sitter-cpp/
+
 # Type checkers / linters
 .mypy_cache/
 .ruff_cache/

@@ -40,7 +40,7 @@ for result in results:
     issue_data = rules.get(rule_id, {})
 
     title = issue_data.get("shortDescription", {}).get("text", "Unknown")
-    severity = issue_data.get("defaultConfiguration", {}).get("level", "unknown")
+    severity = result.get("level", "unknown")
 
     location = result["locations"][0]["physicalLocation"]
     file_path = location["artifactLocation"]["uri"]
