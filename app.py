@@ -22,6 +22,13 @@ BRANCH = "main"
 # ------------------------
 # Utilities
 # ------------------------
+def map_serverity_to_ui(level):
+    mapping = {
+        "note": "Low",
+        "warning": "Medium",
+        "error": "High"
+    }
+    return mapping.get(level, "Low")
 
 def extract_snippet_from_repo(file_path, start_line, end_line, context=3):
     full_path = os.path.join(PROJECT_ROOT, file_path)
@@ -100,7 +107,7 @@ for result in results:
 
     issues.append({
         "title": issue_data.get("shortDescription", {}).get("text", "Unknown"),
-        "severity": issue_data.get("defaultConfiguration", {}).get("level", "unknown"),
+        "severity": result.get("level", "unknown"),
         "message": result["message"]["text"],
         "file": location["artifactLocation"]["uri"],
         "line": location["region"]["startLine"],
@@ -162,7 +169,7 @@ if code_input.strip():
 
     if matched_issue and score > 60:
         st.session_state.vuln_title = matched_issue["title"]
-        st.session_state.severity = matched_issue["severity"]
+        st.session_state.severity = map_serverity_to_ui(matched_issue["severity"])
         st.session_state.file_path = matched_issue["file"]
         st.session_state.line_number = matched_issue["line"]
 
