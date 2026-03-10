@@ -142,7 +142,7 @@ def extract_sarif_findings(file_path):
     return findings
 
 findings = extract_sarif_findings("snyk-code-output.json")
-
+print(json.dumps(findings, indent=4))
 
 for issue in findings:
 

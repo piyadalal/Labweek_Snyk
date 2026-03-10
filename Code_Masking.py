@@ -116,6 +116,10 @@ def collect_identifiers(node, code_bytes, identifiers):
 
 
 def anonymize_cpp(code_bytes):
+    if isinstance(code_bytes, str):
+        code_bytes = code_bytes.encode("utf8")
+    else:
+        code_bytes = code_bytes
     tree = parser.parse(code_bytes)
 
     replacements = []
@@ -245,29 +249,49 @@ def deanonymize_php(code: str, mapping: dict):
 
 
 
-def anonymize_by_language(code: str, rule_id: str) -> str:
+def anonymize_by_language(code: str, rule_id: str):
     language = rule_id.split("/")[0]
 
     if language == "python":
-        code_anonymized, mapping = anonymize_python(code)
-        restored = deanonymize_python(code_anonymized, mapping)
-        return code_anonymized, restored
+        return anonymize_python(code)
 
     elif language == "cpp":
-        code_anonymized, mapping = anonymize_cpp(code)
-        restored = deanonymize_cpp(code_anonymized, mapping)
-        return code_anonymized, restored
+        return anonymize_cpp(code)
 
     elif language == "php":
         result = anonymize_php(code)
-        anonymized = result["anonymized_code"]
-        mapping = result["mapping"]
-        restored = deanonymize_php(anonymized, mapping)
+        return result["anonymized_code"], result["mapping"]
 
-        return anonymized, restored
+    else:
+        return code, {}
+
+
+def deanonymize_by_language(code: str, mapping: dict, rule_id: str):
+    language = rule_id.split("/")[0]
+
+    if language == "python":
+        return deanonymize_python(code, mapping)
+
+    elif language == "cpp":
+        return deanonymize_cpp(code, mapping)
+
+    elif language == "php":
+        return deanonymize_php(code, mapping)
 
     else:
         return code
+
+
+
+
+
+def code_mask(code: str, rule_id: str):
+    anonymized, mapping = anonymize_by_language(code, rule_id)
+    return anonymized, mapping
+
+
+def code_unmask(code: str, mapping: dict, rule_id: str):
+    return deanonymize_by_language(code, mapping, rule_id)
 
 
 snippet_= """  $target_file = $uploadDir . $bn;
@@ -292,10 +316,19 @@ anonymized_snippet, restored_snippet = anonymize_by_language(
     "cpp"
 )
 
+snippet = b"""
+PyGreenlet* o =
+    (PyGreenlet*)PyBaseObject_Type.tp_new(type, mod_globs->empty_tuple, mod_globs->empty_dict);
+"""
+
+# Mask
+anonymized, mapping = code_mask(snippet, "cpp")
 
 print("\n--- ANONYMIZED ---\n")
-print(anonymized_snippet)
+print(anonymized)
+
+# Unmask
+restored = code_unmask(anonymized, mapping, "cpp")
+
 print("\n--- DE-ANONYMIZED ---\n")
-print(restored_snippet)
-
-
+print(restored)

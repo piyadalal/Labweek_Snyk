@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 from rapidfuzz import fuzz
 import difflib
 import streamlit.components.v1 as components
-
+from Code_Masking import code_mask, code_unmask
+from datetime import datetime, timezone
 # ------------------------
 # Load Environment
 # ------------------------
@@ -72,7 +73,7 @@ def find_best_matching_issue(user_snippet, issues):
 
 def highlight_vulnerable_line(issue):
     snippet = issue["code_snippet"]
-    vuln_line = issue["line"]
+    vuln_line = issue["start_line"]
     snippet_start = issue["snippet_start_line"]
 
     lines = snippet.split("\n")
@@ -91,39 +92,116 @@ def highlight_vulnerable_line(issue):
 # Load Snyk Data
 # ------------------------
 
-with open("snyk-code-output.json") as f:
-    data = json.load(f)
+def extract_sarif_findings(file_path):
+    with open(file_path, "r", encoding="utf-8") as f:
+        sarif = json.load(f)
 
-run = data["runs"][0]
+    run = sarif["runs"][0]
+    rules = run["tool"]["driver"]["rules"]
+    results = run.get("results", [])
+    # Build rule lookup map
+    rule_map = {rule["id"]: rule for rule in rules}
 
-rules = {}
-for rule in run["tool"]["driver"]["rules"]:
-    rules[rule["id"]] = rule
+    findings = []
 
-results = run.get("results", [])
-issues = []
+    for result in results:
+        rule_id = result.get("ruleId")
+        rule = rule_map.get(rule_id, {})
 
-for result in results:
-    rule_id = result.get("ruleId")
-    issue_data = rules.get(rule_id, {})
+        # -----------------------------
+        # Rule-level data
+        # -----------------------------
+        title = rule.get("name")
+        severity= result.get("level", "unknown")
+        short_description = rule.get("shortDescription", {}).get("text", "")
+        help_markdown = rule.get("help", {}).get("markdown", "")
+        cwe = rule.get("properties", {}).get("cwe", [])
 
-    location = result["locations"][0]["physicalLocation"]
+        # Extract CWE if exists
+        cwe_list = ", ".join(cwe) if isinstance(cwe, list) else ""
 
-    snippet, snippet_start_line = extract_snippet_from_repo(
-        location["artifactLocation"]["uri"],
-        location["region"]["startLine"],
-        location["region"]["endLine"]
-    )
+        # -----------------------------
+        # Result-level data
+        # -----------------------------
+        message = result.get("message", {}).get("text", "")
+        level = result.get("level")
 
-    issues.append({
-        "title": issue_data.get("shortDescription", {}).get("text", "Unknown"),
-        "severity": result.get("level", "unknown"),
-        "message": result["message"]["text"],
-        "file": location["artifactLocation"]["uri"],
-        "line": location["region"]["startLine"],
-        "code_snippet": snippet,
-        "snippet_start_line": snippet_start_line
-    })
+        # Location info
+        location = result.get("locations", [{}])[0]
+        physical = location.get("physicalLocation", {})
+        artifact = physical.get("artifactLocation", {})
+        region = physical.get("region", {})
+
+        filepath = artifact.get("uri")
+        uri = artifact.get("uriBaseId")
+
+        start_line = region.get("startLine")
+        end_line = region.get("endLine")
+
+        snippet, snippet_start_line = extract_snippet_from_repo(
+            filepath,
+            start_line,
+            end_line,
+        )
+
+        fingerprint = result.get("fingerprints", {}).get("identity")
+
+        # Properties
+        properties = result.get("properties", {})
+        priority_score = properties.get("priorityScore")
+        is_autofixable = properties.get("isAutofixable")
+
+        # -----------------------------
+        # Extract example fix (if exists)
+        # -----------------------------
+        example_fixes = rule.get("properties", {}).get("exampleCommitFixes", [])
+
+        fixed_code_lines = []
+        github_link = None
+
+        if example_fixes:
+            github_link = example_fixes[0].get("commitURL")
+
+            for line in example_fixes[0].get("lines", []):
+                if line.get("lineChange") == "added":
+                    fixed_code_lines.append(line.get("line"))
+
+        fixed_code = "\n".join(fixed_code_lines)
+
+        # -----------------------------
+        # Build structured object
+        # -----------------------------
+        finding = {
+            "id": fingerprint,
+            "severity": severity,
+            "ruleID": rule_id,
+            "title": title,
+            "short_description": short_description,
+            "message": message,
+            "level": level,
+            "cwe": cwe_list,
+            "filepath": filepath,
+            "uri": uri,
+            "start_line": start_line,
+            "end_line": end_line,
+            "root_cause": short_description,
+            "secure_fix_explanation": help_markdown,
+            "fixed_code": fixed_code,
+            "business_impact": help_markdown,
+            "priority_score": priority_score,
+            "is_autofixable": is_autofixable,
+            "github_link": github_link,
+            "timestamp" : datetime.now(timezone.utc).isoformat(),
+            "code_snippet": snippet,
+            "snippet_start_line": snippet_start_line
+        }
+
+        findings.append(finding)
+
+    return findings
+
+issues = extract_sarif_findings("snyk-code-output.json")
+
 
 # ------------------------
 # Streamlit UI
@@ -158,6 +236,14 @@ if "code_input" not in st.session_state:
 # ------------------------
 
 code_input = st.text_area("Paste Vulnerable Code", height=300)
+# Detect language (basic example)
+language = issues[0]["ruleID"].split("/")[0] # or detect dynamically from file extension
+
+masked_code, mapping = code_mask(code_input, language)
+
+
+st.subheader("Masked Code Sent to LLM")
+st.code(masked_code)
 
 # ------------------------
 # Reset on Snippet Change
@@ -180,8 +266,8 @@ if code_input.strip():
     if matched_issue and score > 60:
         st.session_state.vuln_title = matched_issue["title"]
         st.session_state.severity = map_serverity_to_ui(matched_issue["severity"])
-        st.session_state.file_path = matched_issue["file"]
-        st.session_state.line_number = matched_issue["line"]
+        st.session_state.file_path = matched_issue["filepath"]
+        st.session_state.line_number = matched_issue["start_line"]
 
         st.success(f"Matching issue found on Snyk with {score}% score and fields auto-filled.")
 
@@ -210,6 +296,11 @@ if st.button("Generate Fix") and code_input.strip():
 
     with st.spinner("Generating secure fix..."):
 
+
+
+        st.session_state["mask_mapping"] = mapping
+        st.session_state["mask_language"] = language
+
         prompt = f"""
     You are a senior secure coding expert focused on analyzing vulnerabilities and providing secure code fixes.
     Use {PROGRAMMING_LANGUAGES} and {LESSONS_LINKS} to guide your analysis and recommendations.
@@ -218,8 +309,11 @@ if st.button("Generate Fix") and code_input.strip():
 Vulnerability Title: {vuln_title}
 Severity: {severity}
 
+
 Vulnerable Code:
-```{code_input}```
+```{masked_code}```
+
+
 
 Return JSON:
 {{
@@ -260,7 +354,14 @@ Return JSON:
         st.subheader("Secure Fix Explanation")
         st.write(result_json["secure_fix_explanation"])
         st.subheader("Fixed Code")
-        st.code(result_json["fixed_code"])
+        masked_fix = result_json["fixed_code"]
+
+        mapping = st.session_state.get("mask_mapping", {})
+        language = st.session_state.get("mask_language", "python")
+
+        restored_fix = code_unmask(masked_fix, mapping, language)
+
+        st.code(restored_fix)
 
         if st.button("📋 Copy Patch"):
             components.html(
