@@ -1,0 +1,98 @@
+root
+├── $schema (string)
+├── version (string)
+├── runs (array)
+│   └── [0]
+│       ├── tool
+│       │   └── driver
+│       │       ├── name (string)
+│       │       ├── semanticVersion (string)
+│       │       ├── version (string)
+│       │       ├── informationUri (string)
+│       │       └── rules (array)
+│       │           ├── rule
+│       │           │   ├── id (string)
+│       │           │   ├── name (string)
+│       │           │   ├── shortDescription
+│       │           │   │   └── text (string)
+│       │           │   ├── defaultConfiguration
+│       │           │   │   └── level (string)
+│       │           │   ├── help
+│       │           │   │   ├── markdown (string)
+│       │           │   │   └── text (string)
+│       │           │   └── properties
+│       │           │       ├── tags (array)
+│       │           │       ├── categories (array)
+│       │           │       ├── exampleCommitFixes (array)
+│       │           │       │   ├── commitURL (string)
+│       │           │       │   └── lines (array)
+│       │           │       │       ├── line (string)
+│       │           │       │       ├── lineNumber (int)
+│       │           │       │       └── lineChange (string)
+│       │           │       ├── exampleCommitDescriptions (array)
+│       │           │       ├── precision (string)
+│       │           │       ├── repoDatasetSize (int)
+│       │           │       └── cwe (array)
+│
+├── results (array)
+│   ├── result
+│   │   ├── ruleId (string)
+│   │   ├── ruleIndex (int)
+│   │   ├── level (string)
+│   │   ├── message
+│   │   │   ├── text (string)
+│   │   │   ├── markdown (string)
+│   │   │   └── arguments (array)
+│   │   ├── locations (array)
+│   │   │   └── location
+│   │   │       ├── id (int)
+│   │   │       └── physicalLocation
+│   │   │           ├── artifactLocation
+│   │   │           │   ├── uri (string)
+│   │   │           │   └── uriBaseId (string)
+│   │   │           └── region
+│   │   │               ├── startLine (int)
+│   │   │               ├── endLine (int)
+│   │   │               ├── startColumn (int)
+│   │   │               └── endColumn (int)
+│   │   ├── fingerprints (object)
+│   │   ├── codeFlows (array)
+│   │   │   └── threadFlows (array)
+│   │   │       └── locations (array)
+│   │   │           └── location
+│   │   │               └── physicalLocation
+│   │   │                   ├── artifactLocation
+│   │   │                   └── region
+│   │   └── properties
+│   │       ├── isAutofixable (boolean)
+│   │       ├── priorityScore (int)
+│   │       └── priorityScoreFactors (array)
+
+
+
+rule_id = result.get("ruleId")
+rule_name = result.get("name")
+    title = issue_data.get("shortDescription", {}).get("text", "Unknown")
+    severity = issue_data.get("defaultConfiguration", {}).get("level", "unknown")
+
+    location = result["locations"][0]["physicalLocation"]
+    file_path = location["artifactLocation"]["uri"]
+    line = location["region"]["startLine"]
+
+    message = result["message"]["text"]
+    snippet = extract_snippet_from_repo(
+        file_path,
+        location["region"]["startLine"],
+        location["region"]["endLine"]
+    )
+    #snippet = extract_snippet(result)
+
+    issue_entry = {
+        "title": title,
+        "rule_id": rule_id,
+        "severity": severity,
+        "file": file_path,
+        "line": line,
+        "message": message,
+        "code_snippet": snippet
+    }
