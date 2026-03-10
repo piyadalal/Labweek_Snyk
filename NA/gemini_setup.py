@@ -48,7 +48,7 @@ def triage_issue(issue):
 
 import json
 
-with open("snyk-code-output.json") as f:
+with open("../snyk-code-output.json") as f:
     data = json.load(f)
 
 run = data["runs"][0]
