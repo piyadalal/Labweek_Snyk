@@ -4,9 +4,11 @@ import os
 import datetime
 from dotenv import load_dotenv
 from datetime import datetime, timezone
-from db.vectordb_old import VulnerabilityDB
 
-vuln_db = VulnerabilityDB()
+from db.vector_bulk_db import VectorBulkDB
+bulk_db = VectorBulkDB()
+
+
 load_dotenv()
 
 
@@ -159,21 +161,28 @@ for issue in findings:
     # ---------------------------------------
     # CHECK CACHE FIRST
     # ---------------------------------------
-    existing = vuln_db.get_by_title_and_snippet(
-        issue["title"],
-        issue["code_snippet"]
-    )
 
-    if existing:
-        print("Found in local DB. Skipping LLM.\n")
+    existing = bulk_db.get_by_issue_identity(issue)
 
-        print("----- STORED RESULT -----\n")
-        print(existing["document"])
-        print("\n-------------------------\n")
-
+    # --------------------------------------------------
+    # CASE 1: Record exists AND LLM result already stored
+    # --------------------------------------------------
+    if existing and existing["metadata"].get("llm_stored_result"):
+        print("Found in DB with LLM result. Skipping LLM.\n")
         continue
 
-    print("Not found in DB. Calling LLM...\n")
+    # --------------------------------------------------
+    # CASE 2: Record exists BUT no LLM result
+    # --------------------------------------------------
+    if existing and not existing["metadata"].get("llm_stored_result"):
+        print("Record exists but no LLM result. Generating fix...\n")
+
+    # --------------------------------------------------
+    # CASE 3: Record does not exist
+    # --------------------------------------------------
+    if not existing:
+        print("Not found in DB. Generating fix...\n")
+
 
     prompt = f"""
     You are a senior secure coding expert.Analyze this vulnerability type and provide a secure fix.
@@ -208,7 +217,24 @@ for issue in findings:
     result = response.choices[0].message.content
 
     analysis_json = json.loads(result)
-    vuln_db.store(issue, analysis_json)
+
+    if existing:
+        # UPDATE existing record
+        metadata = existing["metadata"]
+        metadata["llm_stored_result"] = json.dumps(analysis_json)
+
+        bulk_db.vuln_results.upsert(
+            ids=[existing["id"]],
+            documents=[existing["document"]],
+            metadatas=[metadata]
+        )
+
+        print("LLM result updated in DB.\n")
+
+    else:
+        # INSERT new record
+        bulk_db.store_vulnerability_result(issue, analysis_json)
+        print("New record inserted with LLM result.\n")
 
     print("----- FIXED CODE -----\n")
     print(analysis_json["fixed_code"])
