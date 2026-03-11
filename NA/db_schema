@@ -1,0 +1,107 @@
+Collection 1 : vulnerability_instances - Stores individual SARIF results.
+
+Document - embedded text includes semantic meaning :
+
+severity : HIGH
+
+Rule ID: S001
+
+Message:
+Unsanitized user input flows into SQL query.
+
+File:
+src/login.py
+
+Code snippet:
+cursor.execute("SELECT * FROM users WHERE id=" + user_input)
+
+Root cause:
+User input is concatenated into SQL query.
+
+Fix recommendation:
+Use parameterized queries.
+
+
+MetaData (Filterable)
+{
+  "rule_id": "S001",
+  "severity": "HIGH",
+  "filepath": "src/login.py",
+  "start_line": 42,
+  "end_line": 47,
+  "priority_score": 85,
+  "is_autofixable": False,
+  "timestamp": "2026-03-11T10:15:00Z"
+}
+
+
+Collection 2: vulnerability_rules (Stores SARIF rule definitions (from runs[].tool.driver.rules[]).)
+Document:
+
+Rule ID: S001
+Name: SQL Injection
+
+Description:
+Detects unsanitized user input flowing into SQL execution.
+
+Help:
+Always use parameterized queries to prevent injection.
+
+Precision: High
+
+CWE:
+CWE-89
+
+
+Metadata :
+{
+  "rule_id": "S001",
+  "precision": "high",
+  "cwe": ["CWE-89"],
+  "tags": ["security", "injection"],
+  "categories": ["security"],
+  "repo_dataset_size": 120000
+}
+
+
+Chroma DB
+│
+├── vulnerability_instances
+│     ├── id
+│     ├── embedding
+│     ├── document
+│     └── metadata
+│
+└── vulnerability_rules
+      ├── id
+      ├── embedding
+      ├── document
+      └── metadata
+
+#vulnerability_instances = #result
+For each SARIF result, you get:
+
+One row in vulnerability_instances
+One embedding
+One metadata object
+One document blob
+One ID
+
++++++++++++++++++++++IMPORTANT+++++++++++++++++++++
+
+When you query the vulnerability_instances collection, you can filter by metadata fields. For example, if you want to find all instances of "database injection" with severity "HIGH", you can do:
+collection.query(
+    query_texts=["database injection"],
+    where={"severity": "HIGH"},
+    n_results=5
+)
+
+Chroma does:
+
+Embed "database injection"
+
+Find nearest embeddings (vector similarity)
+
+Filter those by severity == HIGH
+
+Return matching documents + metadata

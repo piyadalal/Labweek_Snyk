@@ -8,7 +8,7 @@ import difflib
 import streamlit.components.v1 as components
 from Code_Masking import code_mask, code_unmask
 from datetime import datetime, timezone
-from db.vectordb import VulnerabilityDB
+from db.vectordb_old import VulnerabilityDB
 
 vuln_db = VulnerabilityDB()
 # ------------------------

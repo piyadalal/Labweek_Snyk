@@ -4,7 +4,7 @@ import os
 import datetime
 from dotenv import load_dotenv
 from datetime import datetime, timezone
-from db.vectordb import VulnerabilityDB
+from db.vectordb_old import VulnerabilityDB
 
 vuln_db = VulnerabilityDB()
 load_dotenv()
