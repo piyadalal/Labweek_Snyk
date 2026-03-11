@@ -144,6 +144,7 @@ def extract_sarif_findings(file_path):
 findings = extract_sarif_findings("snyk-code-output.json")
 print(json.dumps(findings, indent=4))
 
+
 for issue in findings:
 
 
@@ -158,8 +159,7 @@ for issue in findings:
     # ---------------------------------------
     # CHECK CACHE FIRST
     # ---------------------------------------
-    existing = vuln_db.get_existing(
-        issue["ruleID"],
+    existing = vuln_db.get_by_title_and_snippet(
         issue["title"],
         issue["code_snippet"]
     )
@@ -167,9 +167,8 @@ for issue in findings:
     if existing:
         print("Found in local DB. Skipping LLM.\n")
 
-        stored_doc = existing["documents"][0]
         print("----- STORED RESULT -----\n")
-        print(stored_doc)
+        print(existing["document"])
         print("\n-------------------------\n")
 
         continue
@@ -209,6 +208,7 @@ for issue in findings:
     result = response.choices[0].message.content
 
     analysis_json = json.loads(result)
+    vuln_db.store(issue, analysis_json)
 
     print("----- FIXED CODE -----\n")
     print(analysis_json["fixed_code"])

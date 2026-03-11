@@ -323,12 +323,12 @@ PyGreenlet* o =
 
 # Mask
 anonymized, mapping = code_mask(snippet, "cpp")
-
-print("\n--- ANONYMIZED ---\n")
-print(anonymized)
-
-# Unmask
-restored = code_unmask(anonymized, mapping, "cpp")
-
-print("\n--- DE-ANONYMIZED ---\n")
-print(restored)
+#
+# print("\n--- ANONYMIZED ---\n")
+# print(anonymized)
+#
+# # Unmask
+# restored = code_unmask(anonymized, mapping, "cpp")
+#
+# print("\n--- DE-ANONYMIZED ---\n")
+# print(restored)
