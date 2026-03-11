@@ -249,8 +249,7 @@ def deanonymize_php(code: str, mapping: dict):
 
 
 
-def anonymize_by_language(code: str, rule_id: str):
-    language = rule_id.split("/")[0]
+def anonymize_by_language(code: str, language: str):
 
     if language == "python":
         return anonymize_python(code)
@@ -266,8 +265,7 @@ def anonymize_by_language(code: str, rule_id: str):
         return code, {}
 
 
-def deanonymize_by_language(code: str, mapping: dict, rule_id: str):
-    language = rule_id.split("/")[0]
+def deanonymize_by_language(code: str, mapping: dict, language: str):
 
     if language == "python":
         return deanonymize_python(code, mapping)
@@ -285,50 +283,52 @@ def deanonymize_by_language(code: str, mapping: dict, rule_id: str):
 
 
 
-def code_mask(code: str, rule_id: str):
-    anonymized, mapping = anonymize_by_language(code, rule_id)
+def code_mask(code: str, language: str):
+    anonymized, mapping = anonymize_by_language(code, language)
     return anonymized, mapping
 
 
-def code_unmask(code: str, mapping: dict, rule_id: str):
-    return deanonymize_by_language(code, mapping, rule_id)
+def code_unmask(code: str, mapping: dict, language: str):
+    return deanonymize_by_language(code, mapping, language)
 
 
-snippet_= """  $target_file = $uploadDir . $bn;
-    $target_file = str_replace(" ", "_", $target_file);
-    if (!isset($_POST['overwrite'])) {
-        if (file_exists($target_file)) {
-            errorMessage("$target_file already exists");"""
 
-snippet_ = """
-        )
+def main_():
+    snippet_= """  $target_file = $uploadDir . $bn;
+        $target_file = str_replace(" ", "_", $target_file);
+        if (!isset($_POST['overwrite'])) {
+            if (file_exists($target_file)) {
+                errorMessage("$target_file already exists");"""
 
-        with open(file, "rb") as f:
-            with tarfile.open(fileobj=f, mode="r:gz") as tarball:
-                tarball.extractall(path=self.jenkins_home)"""
-snippet = b"""
-PyGreenlet* o =
-    (PyGreenlet*)PyBaseObject_Type.tp_new(type, mod_globs->empty_tuple, mod_globs->empty_dict);
-"""
+    snippet_ = """
+            )
+    
+            with open(file, "rb") as f:
+                with tarfile.open(fileobj=f, mode="r:gz") as tarball:
+                    tarball.extractall(path=self.jenkins_home)"""
+    snippet = b"""
+    PyGreenlet* o =
+        (PyGreenlet*)PyBaseObject_Type.tp_new(type, mod_globs->empty_tuple, mod_globs->empty_dict);
+    """
 
-anonymized_snippet, restored_snippet = anonymize_by_language(
-    snippet,
-    "cpp"
-)
+    anonymized_snippet, restored_snippet = anonymize_by_language(
+        snippet,
+        "cpp"
+    )
 
-snippet = b"""
-PyGreenlet* o =
-    (PyGreenlet*)PyBaseObject_Type.tp_new(type, mod_globs->empty_tuple, mod_globs->empty_dict);
-"""
+    snippet = b"""
+    PyGreenlet* o =
+        (PyGreenlet*)PyBaseObject_Type.tp_new(type, mod_globs->empty_tuple, mod_globs->empty_dict);
+    """
 
-# Mask
-anonymized, mapping = code_mask(snippet, "cpp")
-#
-# print("\n--- ANONYMIZED ---\n")
-# print(anonymized)
-#
-# # Unmask
-# restored = code_unmask(anonymized, mapping, "cpp")
-#
-# print("\n--- DE-ANONYMIZED ---\n")
-# print(restored)
+    # Mask
+    anonymized, mapping = code_mask(snippet, "cpp")
+    #
+    # print("\n--- ANONYMIZED ---\n")
+    # print(anonymized)
+    #
+    # # Unmask
+    # restored = code_unmask(anonymized, mapping, "cpp")
+    #
+    # print("\n--- DE-ANONYMIZED ---\n")
+    # print(restored)

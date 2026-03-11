@@ -112,7 +112,7 @@ def highlight_vulnerable_line(issue):
     for i, line in enumerate(lines):
         actual_line = snippet_start + i
         if actual_line == vuln_line:
-            formatted.append(f"{actual_line:>4} | ❌ {line}")
+            formatted.append(f"{actual_line:>4} |  {line}")
         else:
             formatted.append(f"{actual_line:>4} | {line}")
 
@@ -262,7 +262,7 @@ if "last_snippet" not in st.session_state:
 code_input = st.text_area("Paste Vulnerable Code", height=300)
 
 # ----------------------------------
-# 🔁 RESET + AUTOFILL (BEFORE WIDGETS)
+# RESET + AUTOFILL (BEFORE WIDGETS)
 # ----------------------------------
 
 if code_input != st.session_state.last_snippet:
@@ -288,7 +288,7 @@ if code_input != st.session_state.last_snippet:
             st.code(highlighted)
 
 # ----------------------------------
-# 🧾 Editable Fields (ALWAYS VISIBLE)
+# Editable Fields (ALWAYS VISIBLE)
 # ----------------------------------
 
 vuln_title = st.text_input("Vulnerability Title", key="vuln_title")
@@ -300,29 +300,51 @@ severity = st.selectbox(
 
 if st.session_state.file_path:
     github_link = f"{GITHUB_REPO_URL}/blob/{BRANCH}/{st.session_state.file_path}#L{st.session_state.line_number}"
-    st.markdown(f"[🔗 Open in GitHub]({github_link})")
+    st.markdown(f"[ Open in GitHub]({github_link})")
 
 # ----------------------------------
-# 🧠 Generate Fix
+# Generate Fix
 # ----------------------------------
 
 if st.button("Generate Fix") and code_input.strip():
-
+    matched_issue, score = find_best_matching_issue(code_input, issues)
     # Mask for LLM
-    language = issues[0]["ruleID"].split("/")[0]
+    # if matched_issue:
+    #     language = matched_issue["ruleID"].split("/")[0]
+    # else:
+    #     language = "python"  # fallback
+
+
+
+    if matched_issue and matched_issue.get("filepath"):
+        ext = os.path.splitext(matched_issue["filepath"])[1]
+
+        ext_map = {
+            ".py": "python",
+            ".js": "javascript",
+            ".php": "php",
+            ".java": "java"
+        }
+
+        language = ext_map.get(ext, "python")
+    else:
+        language = "python"
+
     masked_code, mapping = code_mask(code_input, language)
 
     st.session_state.mask_mapping = mapping
     st.session_state.mask_language = language
 
     st.subheader("Masked Code Sent to LLM")
+    st.markdown(f"**Language:** `{language}`")
     st.code(masked_code, language=language)
+
 
     # -----------------------------
     # DB Lookup
     # -----------------------------
 
-    matched_issue, score = find_best_matching_issue(code_input, issues)
+
 
     db_record = None
 
