@@ -57,9 +57,10 @@ class VulnerabilityVectorDB:
 
         code_snippet = issue["code_snippet"].strip()
 
-        # Deterministic ID (hash of code)
-        code_hash = hashlib.sha256(code_snippet.encode()).hexdigest()
-        doc_id = code_hash
+        identity_string = f"{issue.get('ruleID')}|{issue.get('filepath')}|{issue.get('start_line')}"
+        doc_id = hashlib.sha256(identity_string.encode()).hexdigest()
+
+        code_hash = doc_id  # optional: keep for metadata tracking
 
         document_text = code_snippet  # Only code embedded
 
@@ -71,14 +72,11 @@ class VulnerabilityVectorDB:
             "end_line": issue.get("end_line"),
             "priority_score": issue.get("priority_score"),
             "is_autofixable": issue.get("is_autofixable"),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-
-            # Store full LLM result
+            "timestamp": issue.get("timestamp"),
             "llm_stored_result": json.dumps(result_json) if result_json else None,
-
-            # Recommended: exact-match hash
             "code_hash": code_hash
         }
+        print("Metadata being stored:", metadata)
 
         self.vuln_results.upsert(
             ids=[doc_id],
@@ -156,6 +154,51 @@ CWE:
             query_texts=[query_text],
             n_results=n_results
         )
+
+    # ---------------------------------------------------------
+    # Get Record By Title and Snippet
+    # ---------------------------------------------------------
+    def get_by_title_and_snippet(self, title: str, code_snippet: str):
+        """
+        Lookup vulnerability result using title + normalized snippet match.
+        Returns full DB record if found, else None.
+        """
+
+        if not code_snippet:
+            return None
+
+        # Normalize snippet
+        normalized_input = "\n".join(
+            line.strip()
+            for line in code_snippet.strip().splitlines()
+            if line.strip()
+        )
+
+        results = self.vuln_results.get(
+            include=["documents", "metadatas"]
+        )
+
+        ids = results.get("ids", [])
+        documents = results.get("documents", [])
+        metadatas = results.get("metadatas", [])
+
+        for doc_id, doc, meta in zip(ids, documents, metadatas):
+
+            normalized_doc = "\n".join(
+                line.strip()
+                for line in doc.strip().splitlines()
+                if line.strip()
+            )
+
+            if normalized_doc == normalized_input and meta.get("rule_id") and title:
+                # Optional: also verify title matches rule_id mapping if needed
+                return {
+                    "id": doc_id,
+                    "document": doc,
+                    "metadata": meta
+                }
+
+        return None
 
     # ---------------------------------------------------------
     # Summary

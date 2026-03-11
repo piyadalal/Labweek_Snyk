@@ -2,7 +2,11 @@ import streamlit as st
 import chromadb
 from chromadb.config import Settings
 import os
-from datetime import datetime
+import hashlib
+
+# ----------------------------------
+# Setup
+# ----------------------------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 persist_dir = os.path.join(BASE_DIR, "chroma_db")
@@ -10,7 +14,8 @@ persist_dir = os.path.join(BASE_DIR, "chroma_db")
 st.set_page_config(layout="wide")
 st.title("Snyk Issue Historical Search from DB")
 
-# Connect to DB
+st.write("DB Path:", os.path.abspath(persist_dir))
+
 client = chromadb.Client(
     Settings(
         persist_directory=persist_dir,
@@ -18,36 +23,37 @@ client = chromadb.Client(
     )
 )
 
-collections = client.list_collections()
-if not collections:
-    st.warning("No collections found in chroma_db")
-    st.stop()
+collection = client.get_or_create_collection("vuln_results")
 
-# ------------------------------
-# Collection Summary
-# ------------------------------
-st.subheader("Collection Summary")
-summary_data = {}
-for c in collections:
-    col = client.get_collection(c.name)
-    summary_data[c.name] = col.count()
-st.json(summary_data)
+# ----------------------------------
+# Session State Initialization
+# ----------------------------------
 
-# ------------------------------
-# Focus on vuln_results
-# ------------------------------
-if "vuln_results" not in summary_data:
-    st.warning("vuln_results collection not found.")
-    st.stop()
+if "search_results" not in st.session_state:
+    st.session_state.search_results = None
 
-collection = client.get_collection("vuln_results")
-st.subheader("Browse All Records")
+if "search_distances" not in st.session_state:
+    st.session_state.search_distances = None
+
+if "search_mode" not in st.session_state:
+    st.session_state.search_mode = "Semantic Search"
+
+# ----------------------------------
+# Browse Records
+# ----------------------------------
+
+st.subheader("Browse Records")
 
 total_records = collection.count()
 st.write(f"Total Records: {total_records}")
 
 page_size = 20
-page = st.number_input("Page", min_value=1, max_value=max(1, (total_records // page_size) + 1), value=1)
+page = st.number_input(
+    "Page",
+    min_value=1,
+    max_value=max(1, (total_records // page_size) + 1),
+    value=1
+)
 
 offset = (page - 1) * page_size
 
@@ -72,31 +78,36 @@ if st.button("Load Page"):
             st.markdown("#### Metadata")
             st.json(metadatas[i])
 
-st.subheader("Search & Filters")
+# ----------------------------------
+# Search Section
+# ----------------------------------
 
-# ------------------------------
-# Semantic Search
-# ------------------------------
-query_text = st.text_input("Semantic Search (e.g. 'SQL injection in login')")
+st.subheader("Search")
 
-# ------------------------------
+search_mode = st.radio(
+    "Search Mode",
+    ["Exact Code Match", "Semantic Search"],
+    key="search_mode"
+)
+
+query_text = st.text_area("Enter Code Snippet or Query")
+
+# ----------------------------------
 # Filters
-# ------------------------------
+# ----------------------------------
+
 col1, col2, col3 = st.columns(3)
 
 with col1:
     severity_filter = st.selectbox(
         "Severity",
-        ["All", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
+        ["All", "Low", "Medium", "High", "Critical"]
     )
 
-    rule_id_filter = st.text_input("Rule ID (exact match)")
+    rule_id_filter = st.text_input("Rule ID")
 
 with col2:
-    filepath_filter = st.text_input("Filepath contains")
-
-    priority_min = st.number_input("Min Priority Score", value=0)
-    priority_max = st.number_input("Max Priority Score", value=100)
+    filepath_filter = st.text_input("Filepath Contains")
 
 with col3:
     autofix_filter = st.selectbox(
@@ -104,16 +115,20 @@ with col3:
         ["All", "True", "False"]
     )
 
-    start_date = st.date_input("Start Date (optional)", value=None)
-    end_date = st.date_input("End Date (optional)", value=None)
-
-# ------------------------------
-# Build WHERE filter (Chroma v2 compliant)
-# ------------------------------
 conditions = []
 
 if severity_filter != "All":
-    conditions.append({"severity": severity_filter})
+    severity_map = {
+        "Low": "note",
+        "Medium": "warning",
+        "High": "error",
+        "Critical": "critical"
+    }
+
+    if severity_filter != "All":
+        conditions.append({
+            "severity": severity_map.get(severity_filter, severity_filter)
+        })
 
 if rule_id_filter:
     conditions.append({"rule_id": rule_id_filter})
@@ -121,90 +136,133 @@ if rule_id_filter:
 if filepath_filter:
     conditions.append({"filepath": {"$contains": filepath_filter}})
 
-# Only apply priority filter if user changed defaults
-if priority_min != 0 or priority_max != 100:
-    conditions.append({
-        "priority_score": {
-            "$gte": priority_min,
-            "$lte": priority_max
-        }
-    })
-
 if autofix_filter != "All":
     conditions.append({
         "is_autofixable": autofix_filter == "True"
     })
 
-if start_date and end_date:
-    conditions.append({
-        "timestamp": {
-            "$gte": start_date.isoformat(),
-            "$lte": end_date.isoformat()
-        }
-    })
-
-# Final where clause
 where = {"$and": conditions} if conditions else None
 
-# ------------------------------
-# Execute Search
-# ------------------------------
-if st.button("Run Search"):
+# ----------------------------------
+# Run Search
+# ----------------------------------
 
-    if query_text:
+if st.button("Run Search") and query_text.strip():
+
+    # --------------------------
+    # Exact Match Mode
+    # --------------------------
+
+    if search_mode == "Exact Code Match":
+
+        normalized = "\n".join(
+            line.strip()
+            for line in query_text.strip().splitlines()
+            if line.strip()
+        )
+
+        code_hash = hashlib.sha256(normalized.encode()).hexdigest()
+
+        results = collection.get(
+            where={"code_hash": code_hash},
+            include=["documents", "metadatas"]
+        )
+
+        ids = results.get("ids", [])
+        documents = results.get("documents", [])
+        metadatas = results.get("metadatas", [])
+
+        st.session_state.search_results = {
+            "ids": ids,
+            "documents": documents,
+            "metadatas": metadatas
+        }
+
+        st.session_state.search_distances = None
+
+    # --------------------------
+    # Semantic Mode
+    # --------------------------
+
+    else:
+
         results = collection.query(
             query_texts=[query_text],
             n_results=20,
             where=where if where else None
         )
+
+        st.session_state.search_results = {
+            "ids": results.get("ids", [[]])[0],
+            "documents": results.get("documents", [[]])[0],
+            "metadatas": results.get("metadatas", [[]])[0]
+        }
+
+        st.session_state.search_distances = results.get("distances", [[]])[0]
+
+# ----------------------------------
+# Render Results (Persisted)
+# ----------------------------------
+
+if st.session_state.search_results:
+
+    ids = st.session_state.search_results["ids"]
+    documents = st.session_state.search_results["documents"]
+    metadatas = st.session_state.search_results["metadatas"]
+    distances = st.session_state.search_distances
+
+    # Exact mode
+    if st.session_state.search_mode == "Exact Code Match":
+
+        if not ids:
+            st.warning("No exact match found.")
+        else:
+            st.success(f"Found {len(ids)} exact match(es).")
+
+            for i in range(len(ids)):
+                st.markdown("---")
+                st.markdown(f"### ID: `{ids[i]}`")
+
+                colA, colB = st.columns(2)
+
+                with colA:
+                    st.code(documents[i])
+
+                with colB:
+                    st.json(metadatas[i])
+
+    # Semantic mode
     else:
-        results = collection.get(
-            where=where if where else None,
-            limit=20
+
+        similarity_threshold = st.slider(
+            "Minimum Similarity",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.3,
+            step=0.05
         )
 
-    # Normalize response structure
-    if query_text:
-        ids = results.get("ids", [[]])[0]
-        documents = results.get("documents", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
-        distances = results.get("distances", [[]])[0]
-    else:
-        ids = results.get("ids", [])
-        documents = results.get("documents", [])
-        metadatas = results.get("metadatas", [])
-        distances = None
+        filtered = []
 
-    TOLERANCE = 0.9999
+        for i in range(len(ids)):
+            similarity = 1 - distances[i]
+            if similarity >= similarity_threshold:
+                filtered.append((i, similarity))
 
-    # Normalize distances safely
-    valid_distances = distances if distances else []
+        if not filtered:
+            st.warning("No results above similarity threshold.")
+        else:
+            st.success(f"{len(filtered)} result(s) above threshold")
 
-    # Collect exact matches
-    exact_matches = [
-        i for i, d in enumerate(valid_distances)
-        if (1 - d) >= TOLERANCE
-    ]
+            for i, similarity in filtered:
+                st.markdown("---")
+                st.markdown(f"### ID: `{ids[i]}`")
+                st.markdown(f"Similarity: {similarity:.4f}")
 
-    # Display results
-    if not exact_matches:
-        st.info("No exact matches found.")
-    else:
-        st.success(f"Found {len(exact_matches)} exact matches")
+                colA, colB = st.columns(2)
 
-        for i in exact_matches:
-            similarity = 1 - valid_distances[i]
+                with colA:
+                    st.code(documents[i])
 
-            st.markdown("---")
-            st.markdown(f"### ID: `{ids[i]}`")
-            st.markdown(f"Similarity: {similarity:.4f}")
-
-            colA, colB = st.columns(2)
-
-            with colA:
-                st.markdown("#### Document")
-                st.code(documents[i] if i < len(documents) else "")
-
-            with colB:
-                st.markdown("#### Metadata")
-                st.json(metadatas[i] if i < len(metadatas) else {})
+                with colB:
+                    st.json(metadatas[i])
