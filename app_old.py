@@ -239,6 +239,8 @@ if "code_input" not in st.session_state:
 # ------------------------
 
 code_input = st.text_area("Paste Vulnerable Code", height=300)
+
+
 # Detect language (basic example)
 language = issues[0]["ruleID"].split("/")[0] # or detect dynamically from file extension
 
