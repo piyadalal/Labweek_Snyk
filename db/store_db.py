@@ -140,19 +140,8 @@ inserted = 0
 
 for issue in findings:
     try:
-        db.store_vulnerability_result(
-            rule_id=issue["ruleID"],
-            severity=issue["level"],
-            message=issue["message"],
-            filepath=issue["filepath"],
-            code_snippet=issue["code_snippet"],
-            root_cause=issue["root_cause"],
-            fix_recommendation=issue["secure_fix_explanation"],
-            start_line=issue["start_line"],
-            end_line=issue["end_line"],
-            priority_score=issue.get("priority_score") or 0,
-            is_autofixable=issue.get("is_autofixable") or False
-        )
+        # Store finding with NO LLM result yet
+        db.store_vulnerability_result(issue, result_json=None)
         inserted += 1
 
     except Exception as e:

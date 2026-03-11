@@ -47,36 +47,37 @@ class VulnerabilityVectorDB:
 
     def store_vulnerability_result(
             self,
-            rule_id: str,
-            severity: str,
-            message: str,
-            filepath: str,
-            code_snippet: str,
-            root_cause: str,
-            fix_recommendation: str,
-            start_line: int,
-            end_line: int,
-            priority_score: int,
-            is_autofixable: bool
-    ) -> str:
-        doc_id = self._generate_id(rule_id, filepath, start_line, code_snippet)
+            issue: dict,
+            result_json: dict | None
+    ):
+        """
+        Store code snippet as document.
+        Store LLM result JSON inside metadata under 'llm_stored_result'.
+        """
 
-        # EMBED ONLY CODE
-        document_text = code_snippet.strip()
+        code_snippet = issue["code_snippet"].strip()
 
-        # EVERYTHING ELSE → METADATA
+        # Deterministic ID (hash of code)
+        code_hash = hashlib.sha256(code_snippet.encode()).hexdigest()
+        doc_id = code_hash
+
+        document_text = code_snippet  # Only code embedded
+
         metadata = {
-            "rule_id": rule_id,
-            "severity": severity,
-            "message": message,
-            "root_cause": root_cause,
-            "fix_recommendation": fix_recommendation,
-            "filepath": filepath,
-            "start_line": start_line,
-            "end_line": end_line,
-            "priority_score": priority_score,
-            "is_autofixable": is_autofixable,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "rule_id": issue.get("ruleID"),
+            "severity": issue.get("severity"),
+            "filepath": issue.get("filepath"),
+            "start_line": issue.get("start_line"),
+            "end_line": issue.get("end_line"),
+            "priority_score": issue.get("priority_score"),
+            "is_autofixable": issue.get("is_autofixable"),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+
+            # Store full LLM result
+            "llm_stored_result": json.dumps(result_json) if result_json else None,
+
+            # Recommended: exact-match hash
+            "code_hash": code_hash
         }
 
         self.vuln_results.upsert(
@@ -86,7 +87,6 @@ class VulnerabilityVectorDB:
         )
 
         return doc_id
-
     # ---------------------------------------------------------
     # Store Rule Definition
     # ---------------------------------------------------------
