@@ -13,6 +13,9 @@ from datetime import datetime, timezone
 from Confluence_doc.fetch_db_issue_bulk import publish_vulnerability_report_to_confluence
 from extract_snyk import export_snyk_rest_to_sarif
 from Confluence_doc.fetch_db_issues import publish_vulnerability_report_to_confluence, fetch_issues_from_chroma
+import urllib.parse
+
+
 # ----------------------------------
 # Init
 # ----------------------------------
@@ -68,11 +71,6 @@ def find_best_matching_issue(user_snippet, issues):
 
     return best_match, best_score
 
-
-# ----------------------------------
-# Load SARIF Issues
-# ----------------------------------
-
 def extract_snippet_from_repo(file_path, start_line, end_line, context=3):
     full_path = os.path.join(PROJECT_ROOT, file_path)
     try:
@@ -101,7 +99,6 @@ def find_best_matching_issue(user_snippet, issues):
                 best_match = issue
 
     return best_match, best_score
-
 
 def highlight_vulnerable_line(issue):
     snippet = issue["code_snippet"]
@@ -227,353 +224,465 @@ def extract_sarif_findings(file_path):
         findings.append(finding)
 
     return findings
-
-
 issues = extract_sarif_findings("snyk-code-output.json")
+
+def show_feedback_page():
+    st.title("Feedback & Support")
+
+    st.markdown("Help us improve the AI-Powered Snyk Alert Triage tool.")
+
+    feedback_type = st.selectbox(
+        "Feedback Type",
+        ["Bug Report", "Feature Request", "General Feedback"]
+    )
+
+    title = st.text_input("Title")
+
+    description = st.text_area(
+        "Describe the issue or suggestion",
+        height=200
+    )
+
+    steps = ""
+    if feedback_type == "Bug Report":
+        steps = st.text_area(
+            "Steps to reproduce",
+            height=150
+        )
+
+    severity = st.selectbox(
+        "Severity / Priority",
+        ["Low", "Medium", "High", "Critical"]
+    )
+
+    name = st.text_input("Your Name (optional)")
+    email = st.text_input("Your Email (optional)")
+
+    screenshot = st.file_uploader(
+        "Attach Screenshot (optional)",
+        type=["png", "jpg", "jpeg"]
+    )
+
+    if st.button("Submit Feedback"):
+
+        feedback_entry = {
+            "type": feedback_type,
+            "title": title,
+            "description": description,
+            "steps": steps,
+            "severity": severity,
+            "name": name,
+            "email": email,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        # -----------------------------
+        # Save locally (optional)
+        # -----------------------------
+        feedback_file = "feedback_log.json"
+
+        if os.path.exists(feedback_file):
+            with open(feedback_file, "r") as f:
+                existing = json.load(f)
+        else:
+            existing = []
+
+        existing.append(feedback_entry)
+
+        with open(feedback_file, "w") as f:
+            json.dump(existing, f, indent=2)
+
+        # -----------------------------
+        # Build Outlook Mail Draft
+        # -----------------------------
+
+        recipient = "your.name@company.com"  # <-- change this
+
+        subject = f"[AI Snyk Tool] {feedback_type} - {title}"
+
+        body = f"""
+Type: {feedback_type}
+Severity: {severity}
+Name: {name}
+Email: {email}
+Timestamp: {feedback_entry['timestamp']}
+
+Description:
+{description}
+
+Steps:
+{steps}
+"""
+
+        # URL encode safely
+        encoded_subject = urllib.parse.quote(subject)
+        encoded_body = urllib.parse.quote(body)
+
+        mailto_link = f"mailto:{recipient}?subject={encoded_subject}&body={encoded_body}"
+
+        st.success("Thank you! Click below to send the email via Outlook.")
+        st.markdown(f"[📧 Open Outlook ]({mailto_link})")
+
+
 
 # ----------------------------------
 # Streamlit UI
 # ----------------------------------
 
 st.set_page_config(page_title="AI-Powered Snyk Alert Triage", layout="wide")
-st.title("AI-Powered Snyk Alert Triage")
+st.sidebar.markdown("Navigation")
 
-# ==================================================
-# Bulk Snyk Processing Section
-# ==================================================
+if "page" not in st.session_state:
+    st.session_state.page = "Issue Triage"
 
-st.markdown("---")
-st.header(" Bulk Snyk Issue Processing")
-main_col1, main_col2, main_col3 = st.columns(3)
+if st.sidebar.button("Issue Triage", use_container_width=True):
+    st.session_state.page = "Issue Triage"
 
+if st.sidebar.button("Feedback & Support", use_container_width=True):
+    st.session_state.page = "Feedback & Support"
 
-# ----------------------------------
-# Generate Fix For All Issues
-# ----------------------------------
-with main_col1:
+page = st.session_state.page
+if page == "Issue Triage":
 
-    if st.button("Extract Snyk Issues"):
-        with st.spinner("Running scan on Snyk Portal..."):
-            result, path , total_issues , count= export_snyk_rest_to_sarif()
+    st.title("AI-Powered Snyk Alert Triage")
 
-        if result:
-            data = result
-            st.markdown("Snyk issue exported at:" + path)
-            st.success(f"Issue export completed from Snyk")
-        else:
-            st.error("Scan failed")
-            st.code(result.stderr)
+    # ==================================================
+    # Bulk Snyk Processing Section
+    # ==================================================
 
+    st.markdown("---")
+    st.header(" Bulk Snyk Issue Processing")
+    main_col1, main_col2, main_col3 = st.columns(3)
 
 
-with main_col2:
-    if st.button("Generate Fix for ALL Snyk Issues"):
+    # ----------------------------------
+    # Generate Fix For All Issues
+    # ----------------------------------
+    with main_col1:
 
-        with st.spinner("Processing all Snyk issues..."):
-            result = generate_fix_for_all_issues()
+        if st.button("Extract Snyk Issues"):
+            with st.spinner("Running scan on Snyk Portal..."):
+                result, path , total_issues , count= export_snyk_rest_to_sarif()
 
-        st.success("Bulk processing completed!")
+            if result:
+                data = result
+                st.markdown("Snyk issue exported at:" + path)
+                st.success(f"Issue export completed from Snyk")
+            else:
+                st.error("Scan failed")
+                st.code(result.stderr)
 
-        # ----------------------------------
-        # Summary Metrics
-        # ----------------------------------
 
-        col1, col2, col3, col4 = st.columns(4)
 
-        col1.metric("Total Issues", result["total_issues"])
-        col2.metric("Fixes Generated", result["generated"])
-        col3.metric("Fixes Updated", result["updated"])
-        col4.metric("Skipped (Already in DB)", result["skipped"])
+    with main_col2:
+        if st.button("Generate Fix for ALL Snyk Issues"):
 
-        st.markdown("---")
+            with st.spinner("Processing all Snyk issues..."):
+                result = generate_fix_for_all_issues()
 
-        # ----------------------------------
-        # Detailed Messages
-        # ----------------------------------
+            st.success("Bulk processing completed!")
 
-        if result["skipped"] > 0:
-            st.info(f"{result['skipped']} issue(s) already exist in DB. No LLM call made.")
+            # ----------------------------------
+            # Summary Metrics
+            # ----------------------------------
 
-        if result["generated"] + result["updated"] > 0:
-            st.success(
-                f"LLM generated/updated fixes for "
-                f"{result['generated'] + result['updated']} issue(s)."
-            )
+            col1, col2, col3, col4 = st.columns(4)
 
-        # Optional: Show detailed breakdown
-        with st.expander("View Detailed Results"):
-            for item in result["details"]:
-                if item["status"].startswith("Skipped"):
-                    st.write(f" **{item['title']}** — Already exists in DB")
-                else:
-                    st.write(f"**{item['title']}** — Fix generated by LLM")
+            col1.metric("Total Issues", result["total_issues"])
+            col2.metric("Fixes Generated", result["generated"])
+            col3.metric("Fixes Updated", result["updated"])
+            col4.metric("Skipped (Already in DB)", result["skipped"])
 
-        # for item in summary:
-        #     st.write(f"**{item['title']}** — {item['status']}")
+            st.markdown("---")
 
-# ----------------------------------
-# Generate Report
-# ----------------------------------
+            # ----------------------------------
+            # Detailed Messages
+            # ----------------------------------
 
-with main_col3:
-    if st.button("Generate Security Report"):
-        status,url = publish_vulnerability_report_to_confluence()
-        st.markdown("Published at : " + url)
-        if status:
-            st.info("Report generation completed.")
-        else:
-            st.error("Report generation failed.")
+            if result["skipped"] > 0:
+                st.info(f"{result['skipped']} issue(s) already exist in DB. No LLM call made.")
 
-# ----------------------------------
-# Session Defaults
-# ----------------------------------
-
-if "vuln_title" not in st.session_state:
-    st.session_state.vuln_title = ""
-
-if "severity" not in st.session_state:
-    st.session_state.severity = "Low"
-
-if "file_path" not in st.session_state:
-    st.session_state.file_path = ""
-
-if "line_number" not in st.session_state:
-    st.session_state.line_number = ""
-
-if "last_snippet" not in st.session_state:
-    st.session_state.last_snippet = ""
-
-# ==================================================
-# SECTION 1: Single Issue Processing
-# ==================================================
-
-st.markdown("---")
-st.header(" Single Issue Processing")
-
-# ----------------------------------
-# Code Input
-# ----------------------------------
-
-code_input = st.text_area("Paste Vulnerable Code", height=300)
-
-# ----------------------------------
-# RESET + AUTOFILL (BEFORE WIDGETS)
-# ----------------------------------
-
-if code_input != st.session_state.last_snippet:
-    st.session_state.last_snippet = code_input
-    st.session_state.vuln_title = ""
-    st.session_state.severity = "Low"
-    st.session_state.file_path = ""
-    st.session_state.line_number = ""
-
-    if code_input.strip():
-        matched_issue, score = find_best_matching_issue(code_input, issues)
-
-        if matched_issue and score > 60:
-            st.session_state.vuln_title = matched_issue["title"]
-            st.session_state.severity = map_serverity_to_ui(matched_issue["severity"])
-            st.session_state.file_path = matched_issue["filepath"]
-            st.session_state.line_number = matched_issue["start_line"]
-
-            st.success(f"Matching issue found on Snyk ({score:.2f}%)")
-
-            highlighted = highlight_vulnerable_line(matched_issue)
-            st.markdown("Vulnerable Code Lines Highlighted:")
-            st.code(highlighted)
-
-# ----------------------------------
-# Editable Fields (ALWAYS VISIBLE)
-# ----------------------------------
-
-vuln_title = st.text_input("Vulnerability Title", key="vuln_title")
-severity = st.selectbox(
-    "Severity",
-    ["Low", "Medium", "High", "Critical"],
-    key="severity"
-)
-
-if st.session_state.file_path:
-    github_link = f"{GITHUB_REPO_URL}/blob/{BRANCH}/{st.session_state.file_path}#L{st.session_state.line_number}"
-    st.markdown(f"[ Open in GitHub]({github_link})")
-
-# ----------------------------------
-# Generate Fix
-# ----------------------------------
-
-if st.button("Generate Fix") and code_input.strip():
-    matched_issue, score = find_best_matching_issue(code_input, issues)
-    # Mask for LLM
-    # if matched_issue:
-    #     language = matched_issue["ruleID"].split("/")[0]
-    # else:
-    #     language = "python"  # fallback
-
-
-
-    if matched_issue and matched_issue.get("filepath"):
-        ext = os.path.splitext(matched_issue["filepath"])[1]
-
-        ext_map = {
-            ".py": "python",
-            ".js": "javascript",
-            ".php": "php",
-            ".java": "java"
-        }
-
-        language = ext_map.get(ext, "python")
-    else:
-        language = "python"
-
-    masked_code, mapping = code_mask(code_input, language)
-
-    st.session_state.mask_mapping = mapping
-    st.session_state.mask_language = language
-
-    st.subheader("Masked Code Sent to LLM")
-    st.markdown(f"**Language:** `{language}`")
-    st.code(masked_code, language=language)
-
-
-    # -----------------------------
-    # DB Lookup
-    # -----------------------------
-
-
-
-    db_record = None
-
-    if matched_issue and score > 60:
-        identity_string = f"{matched_issue.get('ruleID')}|{matched_issue.get('filepath')}|{matched_issue.get('start_line')}"
-        doc_id = hashlib.sha256(identity_string.encode()).hexdigest()
-
-        results = db.vuln_results.get(ids=[doc_id], include=["documents", "metadatas"])
-
-        if results["ids"]:
-            db_record = {
-                "id": results["ids"][0],
-                "document": results["documents"][0],
-                "metadata": results["metadatas"][0]
-            }
-
-    # -----------------------------
-    # CASE 1: Use stored LLM
-    # -----------------------------
-
-    if db_record and db_record["metadata"].get("llm_stored_result"):
-        stored = json.loads(db_record["metadata"]["llm_stored_result"])
-        st.success("Using stored fix from DB.")
-        result_json = stored
-
-    else:
-        # -----------------------------
-        # CASE 2: Generate new LLM fix
-        # -----------------------------
-
-        with st.spinner("Generating secure fix..."):
-
-            prompt = f"""
-Vulnerability Title: {vuln_title}
-Severity: {severity}
-
-Vulnerable Code:
-```{masked_code}```
-
-Return JSON:
-{{
-  "root_cause": "",
-  "secure_fix_explanation": "",
-  "fixed_code": "",
-  "business_impact": "",
-  "exploit_likelihood": "Low|Medium|High",
-  "fix_priority": "Low|Medium|High|Critical"
-}}
-"""
-
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": "You are a senior secure coding expert."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.2
-            )
-
-            result_json = json.loads(response.choices[0].message.content)
-
-            # Update existing
-            if db_record:
-                metadata = db_record["metadata"]
-                metadata["llm_stored_result"] = json.dumps(result_json)
-
-                db.vuln_results.upsert(
-                    ids=[db_record["id"]],
-                    documents=[db_record["document"]],
-                    metadatas=[metadata]
+            if result["generated"] + result["updated"] > 0:
+                st.success(
+                    f"LLM generated/updated fixes for "
+                    f"{result['generated'] + result['updated']} issue(s)."
                 )
 
-                st.success("LLM result updated in DB.")
+            # Optional: Show detailed breakdown
+            with st.expander("View Detailed Results"):
+                for item in result["details"]:
+                    if item["status"].startswith("Skipped"):
+                        st.write(f" **{item['title']}** — Already exists in DB")
+                    else:
+                        st.write(f"**{item['title']}** — Fix generated by LLM")
 
-            # Insert new
-            else:
-                new_record = {
-                    "ruleID": matched_issue.get("ruleID") if matched_issue else None,
-                    "severity": severity,
-                    "filepath": matched_issue.get("filepath") if matched_issue else None,
-                    "start_line": matched_issue.get("start_line") if matched_issue else None,
-                    "end_line": matched_issue.get("end_line") if matched_issue else None,
-                    "priority_score": matched_issue.get("priority_score") if matched_issue else None,
-                    "is_autofixable": matched_issue.get("is_autofixable") if matched_issue else None,
-                    "code_snippet": code_input
-                }
-
-                db.store_vulnerability_result(new_record, result_json)
-                st.success("New record inserted in DB.")
+            # for item in summary:
+            #     st.write(f"**{item['title']}** — {item['status']}")
 
     # ----------------------------------
-    # Display Result
+    # Generate Report
     # ----------------------------------
 
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("Root Cause")
-        st.write(result_json["root_cause"])
-        st.subheader("Risk Assessment")
-        st.write("Exploit Likelihood:", result_json["exploit_likelihood"])
-        st.write("Fix Priority:", result_json["fix_priority"])
-        st.write("Business Impact:", result_json["business_impact"])
-
-    with col2:
-        st.subheader("Secure Fix Explanation")
-        st.write(result_json["secure_fix_explanation"])
-        st.subheader("Fixed Code")
-
-        restored_fix = code_unmask(
-            result_json["fixed_code"],
-            st.session_state.mask_mapping,
-            st.session_state.mask_language
-        )
-
-        st.code(restored_fix)
-if st.button("Add issue to Report"):
-
-    with st.spinner("Updating report..."):
-        issues = fetch_issues_from_chroma()
-
-    if not issues:
-        st.error("No issues found in database.")
-    else:
-        with st.spinner("Publishing full report..."):
-            status, url = publish_vulnerability_report_to_confluence(issues)
+    with main_col3:
+        if st.button("Generate Security Report"):
+            status,url = publish_vulnerability_report_to_confluence()
             st.markdown("Published at : " + url)
             if status:
-                st.success("Report generation completed.")
+                st.info("Report generation completed.")
             else:
                 st.error("Report generation failed.")
 
+    # ----------------------------------
+    # Session Defaults
+    # ----------------------------------
 
+    if "vuln_title" not in st.session_state:
+        st.session_state.vuln_title = ""
+
+    if "severity" not in st.session_state:
+        st.session_state.severity = "Low"
+
+    if "file_path" not in st.session_state:
+        st.session_state.file_path = ""
+
+    if "line_number" not in st.session_state:
+        st.session_state.line_number = ""
+
+    if "last_snippet" not in st.session_state:
+        st.session_state.last_snippet = ""
+
+    # ==================================================
+    # SECTION 1: Single Issue Processing
+    # ==================================================
+
+    st.markdown("---")
+    st.header(" Single Issue Processing")
+
+    # ----------------------------------
+    # Code Input
+    # ----------------------------------
+
+    code_input = st.text_area("Paste Vulnerable Code", height=300)
+
+    # ----------------------------------
+    # RESET + AUTOFILL (BEFORE WIDGETS)
+    # ----------------------------------
+
+    if code_input != st.session_state.last_snippet:
+        st.session_state.last_snippet = code_input
+        st.session_state.vuln_title = ""
+        st.session_state.severity = "Low"
+        st.session_state.file_path = ""
+        st.session_state.line_number = ""
+
+        if code_input.strip():
+            matched_issue, score = find_best_matching_issue(code_input, issues)
+
+            if matched_issue and score > 60:
+                st.session_state.vuln_title = matched_issue["title"]
+                st.session_state.severity = map_serverity_to_ui(matched_issue["severity"])
+                st.session_state.file_path = matched_issue["filepath"]
+                st.session_state.line_number = matched_issue["start_line"]
+
+                st.success(f"Matching issue found on Snyk ({score:.2f}%)")
+
+                highlighted = highlight_vulnerable_line(matched_issue)
+                st.markdown("Vulnerable Code Lines Highlighted:")
+                st.code(highlighted)
+
+    # ----------------------------------
+    # Editable Fields (ALWAYS VISIBLE)
+    # ----------------------------------
+
+    vuln_title = st.text_input("Vulnerability Title", key="vuln_title")
+    severity = st.selectbox(
+        "Severity",
+        ["Low", "Medium", "High", "Critical"],
+        key="severity"
+    )
+
+    if st.session_state.file_path:
+        github_link = f"{GITHUB_REPO_URL}/blob/{BRANCH}/{st.session_state.file_path}#L{st.session_state.line_number}"
+        st.markdown(f"[ Open in GitHub]({github_link})")
+
+    # ----------------------------------
+    # Generate Fix
+    # ----------------------------------
+
+    if st.button("Generate Fix") and code_input.strip():
+        matched_issue, score = find_best_matching_issue(code_input, issues)
+        # Mask for LLM
+        # if matched_issue:
+        #     language = matched_issue["ruleID"].split("/")[0]
+        # else:
+        #     language = "python"  # fallback
+
+
+
+        if matched_issue and matched_issue.get("filepath"):
+            ext = os.path.splitext(matched_issue["filepath"])[1]
+
+            ext_map = {
+                ".py": "python",
+                ".js": "javascript",
+                ".php": "php",
+                ".java": "java"
+            }
+
+            language = ext_map.get(ext, "python")
+        else:
+            language = "python"
+
+        masked_code, mapping = code_mask(code_input, language)
+
+        st.session_state.mask_mapping = mapping
+        st.session_state.mask_language = language
+
+        st.subheader("Masked Code Sent to LLM")
+        st.markdown(f"**Language:** `{language}`")
+        st.code(masked_code, language=language)
+
+
+        # -----------------------------
+        # DB Lookup
+        # -----------------------------
+
+
+
+        db_record = None
+
+        if matched_issue and score > 60:
+            identity_string = f"{matched_issue.get('ruleID')}|{matched_issue.get('filepath')}|{matched_issue.get('start_line')}"
+            doc_id = hashlib.sha256(identity_string.encode()).hexdigest()
+
+            results = db.vuln_results.get(ids=[doc_id], include=["documents", "metadatas"])
+
+            if results["ids"]:
+                db_record = {
+                    "id": results["ids"][0],
+                    "document": results["documents"][0],
+                    "metadata": results["metadatas"][0]
+                }
+
+        # -----------------------------
+        # CASE 1: Use stored LLM
+        # -----------------------------
+
+        if db_record and db_record["metadata"].get("llm_stored_result"):
+            stored = json.loads(db_record["metadata"]["llm_stored_result"])
+            st.success("Using stored fix from DB.")
+            result_json = stored
+
+        else:
+            # -----------------------------
+            # CASE 2: Generate new LLM fix
+            # -----------------------------
+
+            with st.spinner("Generating secure fix..."):
+
+                prompt = f"""
+    Vulnerability Title: {vuln_title}
+    Severity: {severity}
+    
+    Vulnerable Code:
+    ```{masked_code}```
+    
+    Return JSON:
+    {{
+      "root_cause": "",
+      "secure_fix_explanation": "",
+      "fixed_code": "",
+      "business_impact": "",
+      "exploit_likelihood": "Low|Medium|High",
+      "fix_priority": "Low|Medium|High|Critical"
+    }}
+    """
+
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system", "content": "You are a senior secure coding expert."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.2
+                )
+
+                result_json = json.loads(response.choices[0].message.content)
+
+                # Update existing
+                if db_record:
+                    metadata = db_record["metadata"]
+                    metadata["llm_stored_result"] = json.dumps(result_json)
+
+                    db.vuln_results.upsert(
+                        ids=[db_record["id"]],
+                        documents=[db_record["document"]],
+                        metadatas=[metadata]
+                    )
+
+                    st.success("LLM result updated in DB.")
+
+                # Insert new
+                else:
+                    new_record = {
+                        "ruleID": matched_issue.get("ruleID") if matched_issue else None,
+                        "severity": severity,
+                        "filepath": matched_issue.get("filepath") if matched_issue else None,
+                        "start_line": matched_issue.get("start_line") if matched_issue else None,
+                        "end_line": matched_issue.get("end_line") if matched_issue else None,
+                        "priority_score": matched_issue.get("priority_score") if matched_issue else None,
+                        "is_autofixable": matched_issue.get("is_autofixable") if matched_issue else None,
+                        "code_snippet": code_input
+                    }
+
+                    db.store_vulnerability_result(new_record, result_json)
+                    st.success("New record inserted in DB.")
+
+        # ----------------------------------
+        # Display Result
+        # ----------------------------------
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("Root Cause")
+            st.write(result_json["root_cause"])
+            st.subheader("Risk Assessment")
+            st.write("Exploit Likelihood:", result_json["exploit_likelihood"])
+            st.write("Fix Priority:", result_json["fix_priority"])
+            st.write("Business Impact:", result_json["business_impact"])
+
+        with col2:
+            st.subheader("Secure Fix Explanation")
+            st.write(result_json["secure_fix_explanation"])
+            st.subheader("Fixed Code")
+
+            restored_fix = code_unmask(
+                result_json["fixed_code"],
+                st.session_state.mask_mapping,
+                st.session_state.mask_language
+            )
+
+            st.code(restored_fix)
+    if st.button("Add issue to Report"):
+
+        with st.spinner("Updating report..."):
+            issues = fetch_issues_from_chroma()
+
+        if not issues:
+            st.error("No issues found in database.")
+        else:
+            with st.spinner("Publishing full report..."):
+                status, url = publish_vulnerability_report_to_confluence(issues)
+                st.markdown("Published at : " + url)
+                if status:
+                    st.success("Report generation completed.")
+                else:
+                    st.error("Report generation failed.")
+
+elif page == "Feedback & Support":
+    show_feedback_page()
 
 
 
