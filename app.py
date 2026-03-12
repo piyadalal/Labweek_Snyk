@@ -1,6 +1,8 @@
 import streamlit as st
 import json
 import os
+import chromadb
+from chromadb.config import Settings
 from openai import OpenAI
 from dotenv import load_dotenv
 from rapidfuzz import fuzz
@@ -10,10 +12,11 @@ from Issue_embeddings import generate_fix_for_all_issues
 from Code_Masking import code_mask, code_unmask
 from db.vectordb import VulnerabilityVectorDB
 from datetime import datetime, timezone
-from Confluence_doc.fetch_db_issue_bulk import publish_vulnerability_report_to_confluence
+from Confluence_doc.fetch_db_issue_bulk import publish_vulnerability_report_to_confluence_bulk
 from extract_snyk import export_snyk_rest_to_sarif
 from Confluence_doc.fetch_db_issues import publish_vulnerability_report_to_confluence, fetch_issues_from_chroma
 import urllib.parse
+from db.chroma_ui import show_issues_from_db
 
 
 # ----------------------------------
@@ -84,21 +87,6 @@ def extract_snippet_from_repo(file_path, start_line, end_line, context=3):
         return snippet, snippet_start + 1
     except:
         return None, None
-
-
-def find_best_matching_issue(user_snippet, issues):
-    best_match = None
-    best_score = 0
-
-    for issue in issues:
-        snippet = issue.get("code_snippet")
-        if snippet:
-            score = fuzz.partial_ratio(user_snippet.strip(), snippet)
-            if score > best_score:
-                best_score = score
-                best_match = issue
-
-    return best_match, best_score
 
 def highlight_vulnerable_line(issue):
     snippet = issue["code_snippet"]
@@ -326,7 +314,7 @@ Steps:
 
 
 # ----------------------------------
-# Streamlit UI
+# Streamlit UI - Navigation
 # ----------------------------------
 
 st.set_page_config(page_title="AI-Powered Snyk Alert Triage", layout="wide")
@@ -337,11 +325,17 @@ if "page" not in st.session_state:
 
 if st.sidebar.button("Issue Triage", use_container_width=True):
     st.session_state.page = "Issue Triage"
-
+if st.sidebar.button("Past Issues Fixed", use_container_width=True):
+    st.session_state.page = "Past Issues Fixed"
 if st.sidebar.button("Feedback & Support", use_container_width=True):
     st.session_state.page = "Feedback & Support"
-
 page = st.session_state.page
+
+
+# ----------------------------------
+# Streamlit UI - Pages
+# ----------------------------------
+
 if page == "Issue Triage":
 
     st.title("AI-Powered Snyk Alert Triage")
@@ -425,7 +419,7 @@ if page == "Issue Triage":
 
     with main_col3:
         if st.button("Generate Security Report"):
-            status,url = publish_vulnerability_report_to_confluence()
+            status,url = publish_vulnerability_report_to_confluence_bulk()
             st.markdown("Published at : " + url)
             if status:
                 st.info("Report generation completed.")
@@ -683,6 +677,12 @@ if page == "Issue Triage":
 
 elif page == "Feedback & Support":
     show_feedback_page()
+
+
+elif page == "Past Issues Fixed":
+    show_issues_from_db()
+
+
 
 
 

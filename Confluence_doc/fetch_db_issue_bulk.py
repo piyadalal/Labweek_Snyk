@@ -12,7 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 load_dotenv()
 
 
-def publish_vulnerability_report_to_confluence():
+def publish_vulnerability_report_to_confluence_bulk():
     """
     Publish vulnerability report directly from VectorBulkDB.
     """
