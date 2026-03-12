@@ -34,6 +34,12 @@ def publish_vulnerability_report_to_confluence(issues):
     # ----------------------------
     get_url = f"{base_url}/rest/api/content/{page_id}?expand=version"
     response = requests.get(get_url, auth=(email, api_token))
+    response_json = response.json()
+
+    page_url = (
+            response_json["_links"]["base"] +
+            response_json["_links"]["webui"]
+    )
 
     if response.status_code != 200:
         raise Exception(f"Failed to fetch page: {response.text}")
@@ -126,10 +132,16 @@ def publish_vulnerability_report_to_confluence(issues):
         headers={"Content-Type": "application/json"}
     )
 
-    if update_response.status_code != 200:
-        raise Exception(f"Update failed: {update_response.text}")
+
 
     print("Confluence page updated successfully.")
+    if update_response.status_code == 200:
+        print("Successfully generated report")
+        return True, page_url
+    else:
+        print(f"Failed to update page: {update_response.text}")
+        return  False, None
+
 
 def create_vulnerability_word_report(issues, output_path="Vulnerability_Report.docx"):
     """

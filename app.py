@@ -4,12 +4,15 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 from rapidfuzz import fuzz
+import subprocess
 import hashlib
 from Issue_embeddings import generate_fix_for_all_issues
 from Code_Masking import code_mask, code_unmask
 from db.vectordb import VulnerabilityVectorDB
 from datetime import datetime, timezone
 from Confluence_doc.fetch_db_issue_bulk import publish_vulnerability_report_to_confluence
+from extract_snyk import export_snyk_rest_to_sarif
+from Confluence_doc.fetch_db_issues import publish_vulnerability_report_to_confluence, fetch_issues_from_chroma
 # ----------------------------------
 # Init
 # ----------------------------------
@@ -241,14 +244,29 @@ st.title("AI-Powered Snyk Alert Triage")
 
 st.markdown("---")
 st.header(" Bulk Snyk Issue Processing")
-main_col1, main_col2 = st.columns(2)
+main_col1, main_col2, main_col3 = st.columns(3)
 
 
 # ----------------------------------
 # Generate Fix For All Issues
 # ----------------------------------
-
 with main_col1:
+
+    if st.button("Extract Snyk Issues"):
+        with st.spinner("Running scan on Snyk Portal..."):
+            result, path , total_issues , count= export_snyk_rest_to_sarif()
+
+        if result:
+            data = result
+            st.markdown("Snyk issue exported at:" + path)
+            st.success(f"Issue export completed from Snyk")
+        else:
+            st.error("Scan failed")
+            st.code(result.stderr)
+
+
+
+with main_col2:
     if st.button("Generate Fix for ALL Snyk Issues"):
 
         with st.spinner("Processing all Snyk issues..."):
@@ -297,7 +315,7 @@ with main_col1:
 # Generate Report
 # ----------------------------------
 
-with main_col2:
+with main_col3:
     if st.button("Generate Security Report"):
         status,url = publish_vulnerability_report_to_confluence()
         st.markdown("Published at : " + url)
@@ -539,4 +557,24 @@ Return JSON:
         )
 
         st.code(restored_fix)
+if st.button("Add issue to Report"):
+
+    with st.spinner("Updating report..."):
+        issues = fetch_issues_from_chroma()
+
+    if not issues:
+        st.error("No issues found in database.")
+    else:
+        with st.spinner("Publishing full report..."):
+            status, url = publish_vulnerability_report_to_confluence(issues)
+            st.markdown("Published at : " + url)
+            if status:
+                st.success("Report generation completed.")
+            else:
+                st.error("Report generation failed.")
+
+
+
+
+
 
