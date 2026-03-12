@@ -12,11 +12,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 load_dotenv()
 
 
-def publish_vulnerability_report_to_confluence(bulk_db):
+def publish_vulnerability_report_to_confluence():
     """
     Publish vulnerability report directly from VectorBulkDB.
     """
+    from db.vector_bulk_db import VectorBulkDB
 
+    bulk_db = VectorBulkDB()
     issues = bulk_db.fetch_all_issues()
 
     base_url = os.getenv("CONFLUENCE_BASE_URL")
@@ -32,7 +34,12 @@ def publish_vulnerability_report_to_confluence(bulk_db):
     # -------------------------------------------------------
     get_url = f"{base_url}/rest/api/content/{page_id}?expand=version"
     response = requests.get(get_url, auth=(email, api_token))
+    response_json = response.json()
 
+    page_url = (
+            response_json["_links"]["base"] +
+            response_json["_links"]["webui"]
+    )
     if response.status_code != 200:
         raise Exception(f"Failed to fetch page: {response.text}")
 
@@ -139,14 +146,17 @@ def publish_vulnerability_report_to_confluence(bulk_db):
         headers={"Content-Type": "application/json"}
     )
 
-    if update_response.status_code != 200:
-        raise Exception(f"Update failed: {update_response.text}")
+    if update_response.status_code == 200:
+        print("Successfully generated report")
+        return True, page_url
+    else:
+        print(f"Failed to update page: {update_response.text}")
+        return  False, None
 
-    print(" Confluence page updated successfully.")
+
+
 
 
 if __name__ == "__main__":
-    from db.vector_bulk_db import VectorBulkDB
 
-    bulk_db = VectorBulkDB()
-    publish_vulnerability_report_to_confluence(bulk_db)
+    publish_vulnerability_report_to_confluence()

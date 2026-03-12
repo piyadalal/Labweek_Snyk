@@ -6,22 +6,13 @@ from dotenv import load_dotenv
 from datetime import datetime, timezone
 
 from db.vector_bulk_db import VectorBulkDB
-bulk_db = VectorBulkDB()
 
 
-load_dotenv()
 
-
-client = OpenAI(
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    base_url=os.getenv("AZURE_ENDPOINT")
-)
-
-
-PROJECT_ROOT = "/Users/prda5207/PycharmProjects/Git_repos/Sky_E2E_Repo/sky-onbox-e2e-skyq-pa-automation"
 
 
 def extract_snippet_from_repo(file_path, start_line, end_line, context=3):
+    PROJECT_ROOT = "/Users/prda5207/PycharmProjects/Git_repos/Sky_E2E_Repo/sky-onbox-e2e-skyq-pa-automation"
     full_path = os.path.join(PROJECT_ROOT, file_path)
 
     try:
@@ -143,114 +134,154 @@ def extract_sarif_findings(file_path):
 
     return findings
 
-findings = extract_sarif_findings("snyk-code-output.json")
-print(json.dumps(findings, indent=4))
 
+def generate_fix_for_all_issues():
+    GITHUB_REPO_URL = "https://github.com/1703/sky-onbox-e2e-skyq-pa-automation"
+    BRANCH = "main"    #
 
-for issue in findings:
+    bulk_db = VectorBulkDB()
 
+    load_dotenv()
 
-    # print("\n==============================")
-    # print("Vulnerability:", issue['title'])
-    # print("File:", issue['filepath'])
-    # print("Line:", issue['start_line'])
-    # #print("Code:", issue['code_snippet'])
-    print("\n--- Vulnerable Code ---\n")
-    print(issue['code_snippet'])
-    print("\n-----------------------\n")
-    # ---------------------------------------
-    # CHECK CACHE FIRST
-    # ---------------------------------------
-
-    existing = bulk_db.get_by_issue_identity(issue)
-
-    # --------------------------------------------------
-    # CASE 1: Record exists AND LLM result already stored
-    # --------------------------------------------------
-    if existing and existing["metadata"].get("llm_stored_result"):
-        print("Found in DB with LLM result. Skipping LLM.\n")
-        continue
-
-    # --------------------------------------------------
-    # CASE 2: Record exists BUT no LLM result
-    # --------------------------------------------------
-    if existing and not existing["metadata"].get("llm_stored_result"):
-        print("Record exists but no LLM result. Generating fix...\n")
-
-    # --------------------------------------------------
-    # CASE 3: Record does not exist
-    # --------------------------------------------------
-    if not existing:
-        print("Not found in DB. Generating fix...\n")
-
-
-    prompt = f"""
-    You are a senior secure coding expert.Analyze this vulnerability type and provide a secure fix.
-
-    Vulnerability Title: {issue['title']}
-        Message: {issue['message']}
-
-        Vulnerable Code:
-        ```{issue['code_snippet'] or 'Not provided'}```
-
-    Return JSON:
-    {{
-      "root_cause": "",
-      "secure_fix_explanation": "",
-      "fixed_code": "",
-      "business_impact": "",
-      "exploit_likelihood": "Low|Medium|High",
-      "fix_priority": "Low|Medium|High|Critical"
-    }}
-    """
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": "You are a senior secure coding expert."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.2
+    client = OpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        base_url=os.getenv("AZURE_ENDPOINT")
     )
 
-    result = response.choices[0].message.content
 
-    analysis_json = json.loads(result)
+    findings = extract_sarif_findings("snyk-code-output.json")
+    summary = []
+    total = len(findings)
+    generated = 0
+    skipped = 0
+    updated = 0
 
-    if existing:
-        # UPDATE existing record
-        metadata = existing["metadata"]
-        metadata["llm_stored_result"] = json.dumps(analysis_json)
+    for issue in findings:
 
-        bulk_db.vuln_results.upsert(
-            ids=[existing["id"]],
-            documents=[existing["document"]],
-            metadatas=[metadata]
+        github_link = f"{GITHUB_REPO_URL}/blob/{BRANCH}/{issue['filepath']}#L{issue['start_line']}"
+        # print("\n==============================")
+        # print("Vulnerability:", issue['title'])
+        # print("File:", issue['filepath'])
+        # print("Line:", issue['start_line'])
+        # #print("Code:", issue['code_snippet'])
+        print("\n--- Vulnerable Code ---\n")
+        print(issue['code_snippet'])
+        print("\n-----------------------\n")
+        # ---------------------------------------
+        # CHECK CACHE FIRST
+        # ---------------------------------------
+
+        existing = bulk_db.get_by_issue_identity(issue)
+
+        # --------------------------------------------------
+        # CASE 1: Record exists AND LLM result already stored
+        # --------------------------------------------------
+        if existing and existing["metadata"].get("llm_stored_result"):
+            skipped += 1
+            summary.append({
+                "title": issue["title"],
+                "status": "Skipped (Already Exists)"
+            })
+            print("Found in DB with LLM result. Skipping LLM.\n")
+            continue
+
+        # --------------------------------------------------
+        # CASE 2: Record exists BUT no LLM result
+        # --------------------------------------------------
+        if existing and not existing["metadata"].get("llm_stored_result"):
+            print("Record exists but no LLM result. Generating fix...\n")
+
+        # --------------------------------------------------
+        # CASE 3: Record does not exist
+        # --------------------------------------------------
+        if not existing:
+            print("Not found in DB. Generating fix...\n")
+
+
+        prompt = f"""
+        You are a senior secure coding expert.Analyze this vulnerability type and provide a secure fix.
+    
+        Vulnerability Title: {issue['title']}
+            Message: {issue['message']}
+    
+            Vulnerable Code:
+            ```{issue['code_snippet'] or 'Not provided'}```
+    
+        Return JSON:
+        {{
+          "root_cause": "",
+          "secure_fix_explanation": "",
+          "fixed_code": "",
+          "business_impact": "",
+          "exploit_likelihood": "Low|Medium|High",
+          "fix_priority": "Low|Medium|High|Critical"
+        }}
+        """
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "You are a senior secure coding expert."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
         )
 
-        print("LLM result updated in DB.\n")
+        result = response.choices[0].message.content
 
-    else:
-        # INSERT new record
-        bulk_db.store_vulnerability_result(issue, analysis_json)
-        print("New record inserted with LLM result.\n")
-
-    print("----- FIXED CODE -----\n")
-    print(analysis_json["fixed_code"])
-    print("\n----------------------\n")
+        analysis_json = json.loads(result)
 
 
-    # {{
-    #   "root_cause": "",
-    #   "secure_fix_explanation": "",
-    #   "fixed_code": "",
-    #   "business_impact": "",
-    #   "exploit_likelihood": "Low|Medium|High"
-    # }}
+        if existing:
+            # UPDATE existing record
+            metadata = existing["metadata"]
+            metadata["llm_stored_result"] = json.dumps(analysis_json)
+
+            bulk_db.vuln_results.upsert(
+                ids=[existing["id"]],
+                documents=[existing["document"]],
+                metadatas=[metadata]
+            )
+            updated += 1
+            status = "Updated"
+            print("LLM result updated in DB.\n")
+
+        else:
+            # INSERT new record
+            bulk_db.store_vulnerability_result(issue, analysis_json)
+            generated += 1
+            status = "Generated"
+            summary.append({
+                "title": issue["title"],
+                "status": status,
+                "priority": analysis_json["fix_priority"]
+            })
+            print("New record inserted with LLM result.\n")
+
+        print("----- FIXED CODE -----\n")
+        print(analysis_json["fixed_code"])
+        print("\n----------------------\n")
+        print("Bulk Issue analysis completed")
+    return {
+    "total_issues": total,
+    "generated": generated,
+    "updated": updated,
+    "skipped": skipped,
+    "details": summary
+}
+        # {{
+        #   "root_cause": "",
+        #   "secure_fix_explanation": "",
+        #   "fixed_code": "",
+        #   "business_impact": "",
+        #   "exploit_likelihood": "Low|Medium|High"
+        # }}
 
 
 
+if __name__ == "__main__":
 
+    print(generate_fix_for_all_issues())
 
 
